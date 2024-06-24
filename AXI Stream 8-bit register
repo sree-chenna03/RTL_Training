@@ -19,7 +19,6 @@
 // 
 //////////////////////////////////////////////////////////////////////////////////
 
-
 module axi_stream_register (
     input wire clk,
     input wire rst_n, // asynchronous active low reset
@@ -36,24 +35,28 @@ module axi_stream_register (
     output reg m_axis_tlast,
     input wire m_axis_tready
 );
-
+    //These are internal registers to store the data, valid, and last signals.
     reg [7:0] reg_data;
     reg reg_valid;
     reg reg_last;
 
-    // Input interface logic
+    // Input interface logic: This line determines when the input interface is ready to accept data.
+    //It's ready when either the internal register is empty (!reg_valid) or when the output is transferring data (m_axis_tready && m_axis_tvalid).
     assign s_axis_tready = !reg_valid || (m_axis_tready && m_axis_tvalid);
 
-    // Register logic
+    // This block handles the internal register logic
     always @(posedge clk or negedge rst_n) begin
+        // On reset, clear all internal registers
         if (!rst_n) begin
             reg_data <= 8'b0;
             reg_valid <= 1'b0;
             reg_last <= 1'b0;
+        // When input data is valid and ready, store the input data and set valid
         end else if (s_axis_tvalid && s_axis_tready) begin
             reg_data <= s_axis_tdata;
             reg_valid <= 1'b1;
             reg_last <= s_axis_tlast;
+        // When output data is transferred, clear the valid flag
         end else if (m_axis_tready && m_axis_tvalid) begin
             reg_valid <= 1'b0;
         end
@@ -61,10 +64,12 @@ module axi_stream_register (
 
     // Output interface logic
     always @(posedge clk or negedge rst_n) begin
+        //On reset, clear all output signals
         if (!rst_n) begin
             m_axis_tdata <= 8'b0;
             m_axis_tvalid <= 1'b0;
             m_axis_tlast <= 1'b0;
+        //Otherwise, pass the internal register values to the output
         end else begin
             m_axis_tdata <= reg_data;
             m_axis_tvalid <= reg_valid;
