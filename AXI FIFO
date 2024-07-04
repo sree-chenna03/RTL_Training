@@ -1,0 +1,246 @@
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 
+// Engineer: 
+// 
+// Create Date: 24.06.2024 14:46:42
+// Design Name: 
+// Module Name: axis_fifo
+// Project Name: 
+// Target Devices: 
+// Tool Versions: 
+// Description: 
+// 
+// Dependencies: 
+// 
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+// 
+//////////////////////////////////////////////////////////////////////////////////
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 
+// Engineer: 
+// 
+// Create Date: 04.07.2024 10:02:29
+// Design Name: 
+// Module Name: fifo_old
+// Project Name: 
+// Target Devices: 
+// Tool Versions: 
+// Description: 
+// 
+// Dependencies: 
+// 
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+// 
+//////////////////////////////////////////////////////////////////////////////////
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 
+// Engineer: 
+// 
+// Create Date: 24.06.2024 14:46:42
+// Design Name: 
+// Module Name: axis_fifo
+// Project Name: 
+// Target Devices: 
+// Tool Versions: 
+// Description: 
+// 
+// Dependencies: 
+// 
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+// 
+//////////////////////////////////////////////////////////////////////////////////
+module axi_stream_fifo_4096 (
+    input wire clk,
+    input wire rst_n,
+    input read_en,
+    input write_en,
+    
+    // Input AXI Stream interface
+    input wire [7:0] s_axis_tdata,
+    input wire s_axis_tvalid,
+    input wire s_axis_tlast,
+    output wire s_axis_tready,
+    
+    // Output AXI Stream interface
+    output wire [7:0] m_axis_tdata,
+    output wire m_axis_tvalid,
+    output wire m_axis_tlast,
+    input wire m_axis_tready,
+    
+    // FIFO status
+    output wire [12:0] fifo_count
+   // output reg fifo_select
+);
+
+    wire [7:0] fifo1_m_axis_tdata, fifo2_m_axis_tdata;
+    wire fifo1_m_axis_tvalid, fifo2_m_axis_tvalid;
+    wire fifo1_m_axis_tlast, fifo2_m_axis_tlast;
+    wire fifo1_s_axis_tready, fifo2_s_axis_tready;
+    wire [11:0] fifo1_count, fifo2_count;
+    
+    reg fifo_select;
+    wire fifo1_full, fifo2_full;
+    
+    assign fifo1_full = fifo1_count == 12'd4096;
+    assign fifo2_full = fifo2_count == 12'd4096;
+    
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            fifo_select <= 1'b0;
+        else if (fifo1_full && !fifo2_full)
+            fifo_select <= 1'b1;
+        else if (!fifo1_full && fifo2_full)
+            fifo_select <= 1'b0;
+        else if (!fifo1_full && !fifo2_full)
+            fifo_select <= 1'b0;
+    end
+    
+    axi_stream_fifo_2048 fifo1 (
+        .clk(clk),
+        .rst_n(rst_n),
+        .read_en(read_en),
+        .write_en(write_en),
+        .s_axis_tdata(s_axis_tdata),
+        .s_axis_tvalid(s_axis_tvalid & ~fifo_select),
+        .s_axis_tlast(s_axis_tlast),
+        .s_axis_tready(fifo1_s_axis_tready),
+        .m_axis_tdata(fifo1_m_axis_tdata),
+        .m_axis_tvalid(fifo1_m_axis_tvalid),
+        .m_axis_tlast(fifo1_m_axis_tlast),
+        .m_axis_tready(m_axis_tready & ~fifo_select),
+        .fifo_count(fifo1_count)
+    );
+    
+    axi_stream_fifo_2048 fifo2 (
+        .clk(clk),
+        .rst_n(rst_n),
+        .read_en(read_en),
+        .write_en(write_en),
+        .s_axis_tdata(s_axis_tdata),
+        .s_axis_tvalid(s_axis_tvalid & fifo_select),
+        .s_axis_tlast(s_axis_tlast),
+        .s_axis_tready(fifo2_s_axis_tready),
+        .m_axis_tdata(fifo2_m_axis_tdata),
+        .m_axis_tvalid(fifo2_m_axis_tvalid),
+        .m_axis_tlast(fifo2_m_axis_tlast),
+        .m_axis_tready(m_axis_tready & fifo_select),
+        .fifo_count(fifo2_count)
+    );
+    
+    assign s_axis_tready = (fifo_count==12'd4095)? 0: m_axis_tready;
+    assign m_axis_tdata = fifo_select ? fifo2_m_axis_tdata : fifo1_m_axis_tdata;
+    assign m_axis_tvalid = fifo_select ? fifo2_m_axis_tvalid : fifo1_m_axis_tvalid;
+    assign m_axis_tlast = fifo_select ? fifo2_m_axis_tlast : fifo1_m_axis_tlast;
+    
+    assign fifo_count = {1'b0, fifo1_count} + {1'b0, fifo2_count};
+
+endmodule
+
+module axi_stream_fifo_2048 (
+    input wire clk,
+    input wire rst_n,
+    input read_en,
+    input write_en,
+    
+    // Input AXI Stream interface
+    input wire [7:0] s_axis_tdata,
+    input wire s_axis_tvalid,
+    input wire s_axis_tlast,
+    output reg s_axis_tready,
+    
+    // Output AXI Stream interface
+    output reg [7:0] m_axis_tdata,
+    output reg m_axis_tvalid,
+    output reg m_axis_tlast,
+    input wire m_axis_tready,
+    
+    // FIFO status
+    output reg [11:0] fifo_count
+);
+
+    // FIFO memory (synthesis attribute to infer BRAM)
+    (* ram_style = "block" *) reg [8:0] fifo_mem [2047:0];
+    
+    integer i ;
+    reg [11:0] islast=0;
+    reg [11:0] write_temp=0;
+    reg [11:0] read_temp=0;
+    
+    reg [11:0] write_ptr, read_ptr;
+    wire fifo_empty, fifo_full;
+    
+    assign fifo_empty = (fifo_count == 0);
+    assign fifo_full = (fifo_count == 2048);
+    
+
+    
+    // Write operation
+    always @(posedge clk) begin
+        if (~rst_n)
+            write_ptr <= 12'b0;
+    
+        else if (s_axis_tvalid && s_axis_tready && write_en && ~fifo_full) begin
+            fifo_mem[write_ptr] <= {s_axis_tlast, s_axis_tdata};
+            write_ptr <= write_ptr + 1;
+        end
+    end
+    
+    // Read operation
+    always @(posedge clk) begin
+        if (!rst_n) begin
+            m_axis_tvalid <= 1'b0;
+            m_axis_tlast <= 1'b0;
+            m_axis_tdata <= 8'b0;
+            read_ptr <= 12'd0;
+        end else if (!fifo_empty && m_axis_tready && read_en) begin
+            {m_axis_tlast, m_axis_tdata} <= fifo_mem[read_ptr];
+            m_axis_tvalid <= 1'b1;
+            read_ptr <= read_ptr + 1;
+        end else if (m_axis_tready && m_axis_tvalid) begin
+            m_axis_tvalid <= 1'b0;
+        end
+        else m_axis_tdata <= 8'b0;
+    end
+    
+   
+    always@(posedge clk)
+    begin
+           s_axis_tready <= m_axis_tready; // fifo full , enables
+    end
+     
+     //mlast block      
+    always@(posedge clk)
+    begin 
+           if(s_axis_tvalid && s_axis_tready && write_en && ~fifo_full)
+            write_temp=write_temp+1;
+           if(s_axis_tlast)
+           islast=write_temp;
+           if(read_en & ~fifo_empty & m_axis_tready)
+            read_temp=read_temp+1;
+            if(read_temp==islast && m_axis_tvalid)
+            m_axis_tlast=1;
+            else
+            m_axis_tlast=0;
+    end
+    
+    // FIFO count
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            fifo_count <= 12'd0;
+        else if (s_axis_tvalid && s_axis_tready && write_en  && !fifo_full)
+            fifo_count <= fifo_count + 1;
+        else if ( read_en && !fifo_empty && m_axis_tready)
+            fifo_count <= fifo_count - 1;
+    end
+
+endmodule
+
