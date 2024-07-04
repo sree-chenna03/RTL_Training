@@ -1,0 +1,116 @@
+`timescale 1ns / 1ps
+//////////////////////////////////////////////////////////////////////////////////
+// Company: 
+// Engineer: 
+// 
+// Create Date: 24.06.2024 14:50:12
+// Design Name: 
+// Module Name: axi_fifo_tb
+// Project Name: 
+// Target Devices: 
+// Tool Versions: 
+// Description: 
+// 
+// Dependencies: 
+// 
+// Revision:
+// Revision 0.01 - File Created
+// Additional Comments:
+// 
+
+`timescale 1ns / 1ps
+
+module axi_stream_fifo_4096_tb;
+
+    // Signals
+    reg clk;
+    reg rst_n;
+    reg read_en;
+    reg write_en;
+    
+    reg [7:0] s_axis_tdata;
+    reg s_axis_tvalid;
+    reg s_axis_tlast;
+    wire s_axis_tready;
+    
+    wire [7:0] m_axis_tdata;
+    wire m_axis_tvalid;
+    wire m_axis_tlast;
+    reg m_axis_tready;
+    
+    wire [12:0] fifo_count;
+   // wire fifo_select;
+
+    // Instantiate the Unit Under Test (UUT)
+    axi_stream_fifo_4096 uut (
+        .clk(clk),
+        .rst_n(rst_n),
+        .read_en(read_en),
+        .write_en(write_en),
+        .s_axis_tdata(s_axis_tdata),
+        .s_axis_tvalid(s_axis_tvalid),
+        .s_axis_tlast(s_axis_tlast),
+        .s_axis_tready(s_axis_tready),
+        .m_axis_tdata(m_axis_tdata),
+        .m_axis_tvalid(m_axis_tvalid),
+        .m_axis_tlast(m_axis_tlast),
+        .m_axis_tready(m_axis_tready),
+        .fifo_count(fifo_count)
+        //.fifo_select(fifo_select)
+    );
+initial begin
+    clk=0;
+    forever #5 clk=~clk;
+end
+
+initial begin
+    rst_n=0;read_en=0;write_en=0;
+    #15;rst_n=1;
+        m_axis_tready=1;
+   #410;read_en=1; 
+  
+   
+end
+
+initial begin
+s_axis_tlast=0;s_axis_tvalid=0;
+#15;write_en=1;
+#15;s_axis_tvalid=0;
+#5;
+    for(integer i=0;i<=50;i=i+1)
+       begin
+      #20;
+        if(m_axis_tready==1 & s_axis_tready==1 & write_en & ~(fifo_count==13'd4096))
+           begin
+              s_axis_tdata=5*i;
+         if(s_axis_tdata<25)
+            s_axis_tvalid=1;
+         else
+           s_axis_tvalid=1;
+         if(i%10==0 && i!==0 ) begin
+          s_axis_tlast=1;
+         end
+          else
+          s_axis_tlast=0;
+      
+          end
+          else if(fifo_count==13'd4096)
+                     begin
+                     s_axis_tdata=0;
+                     s_axis_tvalid=0;s_axis_tlast=0;
+                     end
+
+    end
+    @(posedge clk)
+    s_axis_tlast=0;s_axis_tdata=0;s_axis_tvalid=0;
+    
+    
+    #20 s_axis_tvalid=0; m_axis_tready=1;write_en=0;
+    #20 s_axis_tvalid=1; m_axis_tready=0;read_en=0;
+    //#20 s_axis_tvalid=1; m_axis_tready=1;read_en=0; write_en=1;
+    #500 $finish;
+  end
+endmodule
+
+ 
+    
